@@ -65,8 +65,8 @@ def main():
         sys.exit(f"No runs found for {empty}; check the input directories.")
     times = {k: np.array([t for t, _ in v]) for k, v in runs.items()}
     stats = {k: [pd.read_csv(p) for _, p in v] for k, v in runs.items()}
-    peaks = {k: np.array([df.ram_used_mb.max() / 1000 for df in v]) for k, v in stats.items()}
-    host_gb = max(df.ram_total_mb.iloc[0] for v in stats.values() for df in v) / 1000
+    peaks = {k: np.array([df.ram_used_mb.max() / 1024 for df in v]) for k, v in stats.items()}
+    host_gib = max(df.ram_total_mb.iloc[0] for v in stats.values() for df in v) / 1024
     bm = {}
     if bare:
         for k in runs:
@@ -116,12 +116,12 @@ def main():
             x = bar_pair(ax, i, j)
             ax.bar(x, v.max(), BAR_W * 0.92, color=LANGS[lang], alpha=0.75)
             ax.scatter(x + rng.uniform(-0.07, 0.07, len(v)), v, s=14, color="k", alpha=0.55, zorder=3)
-    ax.axhline(host_gb, color="gray", ls=":", lw=1)
+    ax.axhline(host_gib, color="gray", ls=":", lw=1)
     ax.set_xticks(range(2))
     ax.set_xticklabels([n for _, n in DATASETS])
-    ax.set_ylabel("Peak RAM, whole host (GB)")
+    ax.set_ylabel("Peak RAM, whole host (GiB)")
     ax.set_title("Peak RAM per run")
-    ax.set_ylim(0, host_gb * 1.17)
+    ax.set_ylim(0, host_gib * 1.17)
     handles = [Patch(color=c, alpha=0.75, label=f"{l}: bar = highest run") for l, c in LANGS.items()]
     handles += [
         Line2D([], [], color="k", marker="o", ls="", alpha=0.55, markersize=4, label="dot = peak of one run"),
@@ -133,7 +133,7 @@ def main():
     plt.close(fig)
 
     fig, axes = plt.subplots(3, 2, figsize=(9, 7.5), sharex="col")
-    cols = [("cpu_percent", "CPU (%)", 1), ("gpu_util_percent", "GPU (%)", 1), ("vram_used_mb", "VRAM (GB)", 1024)]
+    cols = [("cpu_percent", "CPU (%)", 1), ("gpu_util_percent", "GPU (%)", 1), ("vram_used_mb", "VRAM (GiB)", 1024)]
     for c, (sc, name) in enumerate(DATASETS):
         for lang in LANGS:
             v = times[(lang, sc)]

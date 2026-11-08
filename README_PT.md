@@ -86,4 +86,13 @@ Para execuções que não usem `batch*`, é possível passar o caminho do diret�
 Opções úteis:
 - `-o <folder>`: diretório de saída.
 
+Para as análises de dados usadas no artigo deste experimento, foram criados dois outros scripts que olham as amostragens mais profundamente. Seus resultados são criados em `results/article/`:
+```bash
+.venv/bin/python tools/article_stats.py
+.venv/bin/python tools/make_figures.py
+
+.venv/bin/python tools/article_stats.py results/docker/exp1 results/docker/exp2 --baremetal none
+.venv/bin/python tools/make_figures.py results/docker/exp1 results/docker/exp2 --baremetal none -o results/article/figures-exp
+```
+
 Por causa dessa seleção padrão, dê às execuções de teste ou smoke um nome de pasta que não comece com `batch` (o runbook usa `BATCH=mine`); elas são então ignoradas, a menos que você as liste. Toda combinação (ambas as stacks, ambos os datasets) precisa de pelo menos uma execução nas pastas listadas, ou o script para com "No runs found".

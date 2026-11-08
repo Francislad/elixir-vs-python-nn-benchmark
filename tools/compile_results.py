@@ -198,9 +198,9 @@ def build_comparison_sheet(wb, used_names, script_dir, infos):
 
     metric_display = {
         "cpu_percent": "Peak CPU %",
-        "ram_used_mb": "Peak RAM (MB)",
+        "ram_used_mb": "Peak RAM (MiB)",
         "gpu_util_percent": "Peak GPU %",
-        "vram_used_mb": "Peak VRAM (MB)",
+        "vram_used_mb": "Peak VRAM (MiB)",
     }
     headers2 = ["Platform", "Avg elapsed (s)"] + [metric_display[m] for m in metrics]
     header_row2 = rw.append(headers2)

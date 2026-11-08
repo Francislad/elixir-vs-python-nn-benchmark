@@ -18,7 +18,7 @@ Reproduction of the experiment from _Análise do potencial da linguagem Elixir n
 - `python/`: `train_mnist.py` and `train_cifar10.py`.
 - `bench/`: `run_benchmark_elixir.sh` and `run_benchmark_python.sh`, wrappers that run a training script N times and sample the resources used into CSVs.
 - `docker/`: `Dockerfile.elixir`, `Dockerfile.python`, `entrypoint-python.sh`. `docker-compose.yml` is at the project root.
-- `tools/`: `preflight.sh`, `compile_results.py` (XLSX report), `plot_results.py` (PNG graphs), `fix_csv_locale.py`, and `save-images.sh` / `load-images.sh` (scripts to archive and restore the built images).
+- `tools/`: `preflight.sh`, `compile_results.py` (XLSX report), `plot_results.py` (PNG graphs), `article_stats.py` and `make_figures.py` (numbers and vector figures for the article), `fix_csv_locale.py`, and `save-images.sh` / `load-images.sh` (scripts to archive and restore the built images).
 - `RUNBOOK_EN.md`, `RUNBOOK_PT.md`: step-by-step guide to running the project for the first time.
 - `datasets/`: datasets cached by both stacks. `scidata/` is the Elixir cache; `keras/datasets/` is the Python cache.
 
@@ -87,5 +87,14 @@ For runs that do not use `batch*`, the directory path can be passed explicitly. 
 
 Useful options:
 - `-o <folder>`: output directory.
+
+For deeper data analysis used in the article of this experiment, two new scripts were created. Their output goes to `results/article/`:
+```bash
+.venv/bin/python tools/article_stats.py
+.venv/bin/python tools/make_figures.py
+
+.venv/bin/python tools/article_stats.py results/docker/exp1 results/docker/exp2 --baremetal none
+.venv/bin/python tools/make_figures.py results/docker/exp1 results/docker/exp2 --baremetal none -o results/article/figures-exp
+```
 
 Because of the default pooling, give test or smoke runs a folder name that does not start with `batch` (the runbook uses `BATCH=mine`); they are then ignored unless you list them. Every combination (both stacks, both datasets) needs at least one run in the listed folders, or the script stops with "No runs found".

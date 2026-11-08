@@ -1,0 +1,43 @@
+# TensorFlow uses the CUDA 12 libraries from pip, not the base image toolkit (as on bare metal)
+# The host driver must still report CUDA >= 13.3 (driver 610+) because of NVIDIA_REQUIRE_CUDA
+FROM nvidia/cuda:13.3.1-cudnn-devel-ubuntu24.04
+
+ARG TF_VERSION=2.21.0
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+# A comma decimal separator (pt_BR) would corrupt the metric CSVs
+ENV LC_NUMERIC=C
+
+# The base image has no python3 or strace
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 python3-venv python3-pip strace \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN python3 -m venv /opt/venv
+ENV PATH=/opt/venv/bin:${PATH}
+
+# Without the [and-cuda] extra the CUDA pip libraries are missing and the GPU disappears
+RUN pip install --no-cache-dir "tensorflow[and-cuda]==${TF_VERSION}" keras numpy matplotlib pandas openpyxl
+RUN pip freeze > /opt/pip-freeze.txt
+
+# TensorFlow wants libcudnn*.so.9.24.0 but the pip package ships only .so.9
+# nvidia.cudnn is a namespace package (no __file__), the directory comes from __path__
+RUN CUDNN_DIR=$(python3 -c "import nvidia.cudnn, os; print(os.path.join(list(nvidia.cudnn.__path__)[0], 'lib'))") && \
+    CUDNN_VERSION=$(pip show nvidia-cudnn-cu12 | awk '/^Version:/{print $2}' | cut -d. -f1-3) && \
+    test -n "$CUDNN_VERSION" && \
+    echo "cuDNN pip version: ${CUDNN_VERSION}" && \
+    cd "$CUDNN_DIR" && \
+    for f in lib*.so.9; do \
+      ln -sf "$f" "${f}.${CUDNN_VERSION#9.}"; \
+    done && ls -l | grep "so.${CUDNN_VERSION}"
+
+WORKDIR /app
+COPY python/ /app/
+COPY --chmod=755 bench/ /app/bench/
+
+COPY --chmod=755 docker/entrypoint-python.sh /entrypoint.sh
+
+# The entrypoint fixes the cusolver search path at run time
+ENTRYPOINT ["/entrypoint.sh"]
+CMD ["bash"]

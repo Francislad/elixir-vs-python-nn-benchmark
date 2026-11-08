@@ -1,0 +1,18 @@
+# Keep the build context small: dependencies and build output are rebuilt in the image
+elixir/deps/
+elixir/_build/
+elixir/cover/
+elixir/doc/
+elixir/erl_crash.dump
+
+# Datasets are mounted as volumes, not baked into the image
+datasets/
+
+# Results, docs and tooling that run on the host
+results/
+RUNBOOK_*.md
+tools/
+*.xlsx
+*.log
+.git
+.venv/

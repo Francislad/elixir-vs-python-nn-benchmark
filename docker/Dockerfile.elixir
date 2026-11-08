@@ -1,0 +1,90 @@
+# Host driver must report CUDA >= 13.3 (driver 610+) as the base image sets NVIDIA_REQUIRE_CUDA.
+FROM nvidia/cuda:13.3.1-cudnn-devel-ubuntu24.04
+
+ARG ERLANG_VERSION=29.0.3
+ARG ELIXIR_VERSION=1.20.2-otp-29
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LANG=C.UTF-8
+# A comma decimal separator (pt_BR) would corrupt the metric CSVs
+ENV LC_NUMERIC=C
+
+# The base image has no curl, git or unzip; libssl3t64 and libncurses6 are needed by the prebuilt Erlang
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      curl git unzip ca-certificates libssl3t64 libncurses6 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Prebuilt hex.pm Erlang and Elixir instead of a 20 to 40 minute asdf/kerl compile
+RUN curl -fsSL https://builds.hex.pm/builds/otp/amd64/ubuntu-24.04/OTP-${ERLANG_VERSION}.tar.gz | tar -xz -C /opt \
+ && /opt/OTP-${ERLANG_VERSION}/Install -minimal /opt/OTP-${ERLANG_VERSION}
+RUN curl -fsSL -o /tmp/elixir.zip https://builds.hex.pm/builds/elixir/v${ELIXIR_VERSION}.zip \
+ && unzip -q /tmp/elixir.zip -d /opt/elixir && rm /tmp/elixir.zip
+ENV PATH=/opt/OTP-${ERLANG_VERSION}/bin:/opt/elixir/bin:${PATH}
+
+RUN if ldd /opt/OTP-${ERLANG_VERSION}/erts-*/bin/beam.smp | grep 'not found'; then exit 1; fi; \
+    erl -noshell -eval '{ok,_}=application:ensure_all_started(crypto), {ok,_}=application:ensure_all_started(ssl), halt().' && \
+    elixir --version
+
+# NCCL and cuDNN already ship in the base image, so only NVSHMEM is added (all needed by XLA/EXLA)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libnvshmem3-cuda-13 \
+    && rm -rf /var/lib/apt/lists/*
+
+# NVSHMEM installs outside the default ldconfig path
+RUN echo "/usr/lib/x86_64-linux-gnu/nvshmem/13" > /etc/ld.so.conf.d/nvshmem.conf && ldconfig
+ENV LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/nvshmem/13:${LD_LIBRARY_PATH}
+
+# Plugins are versioned .so.6 but looked up as .so.3
+RUN cd /usr/lib/x86_64-linux-gnu/nvshmem/13 && \
+    for f in nvshmem_transport_gpunetio nvshmem_transport_ibdevx nvshmem_transport_ibgda \
+             nvshmem_transport_ibrc nvshmem_transport_libfabric nvshmem_transport_ucx; do \
+      if [ -e ${f}.so.6 ] && [ ! -e ${f}.so.3 ]; then \
+        ln -s ${f}.so.6 ${f}.so.3 && echo "linked ${f}.so.3 -> ${f}.so.6"; \
+      else \
+        echo "skipped ${f} (no .so.6 or .so.3 already present)"; \
+      fi; \
+    done && ldconfig
+
+# The XLA build asks for the .13.0 suffix of the NVRTC builtins
+RUN cd /usr/local/cuda/targets/x86_64-linux/lib && \
+    ln -sf libnvrtc-builtins.so.13.3 libnvrtc-builtins.so.13.0 && \
+    ldconfig && ls -l libnvrtc-builtins.so.13.*
+
+# The generic XLA_TARGET "cuda" fails if not using the major version
+# MAKEFLAGS only affects the EXLA NIF compile
+ENV XLA_TARGET=cuda13
+ENV MAKEFLAGS=-j4
+
+WORKDIR /app
+
+# Dependencies first. The slow EXLA compile stays cached until these files change
+COPY elixir/mix.exs elixir/mix.lock /app/
+COPY elixir/config /app/config
+RUN mix local.hex --force && mix local.rebar --force
+RUN mix deps.get && mix deps.compile
+
+# NVSHMEM 3.8.0 ships the plugins as .so.7 but libexla wants .so.3
+# After deps.compile on purpose (editing this step never redoes the EXLA compile)
+RUN cd /usr/lib/x86_64-linux-gnu/nvshmem/13 && \
+    for f in nvshmem_transport_gpunetio nvshmem_transport_ibdevx nvshmem_transport_ibgda \
+             nvshmem_transport_ibrc nvshmem_transport_libfabric nvshmem_transport_ucx; do \
+      src=$(ls ${f}.so.[0-9] 2>/dev/null | grep -v '\.so\.3$' | sort -V | tail -1); \
+      if [ -n "$src" ] && [ ! -e ${f}.so.3 ]; then \
+        ln -s "$src" ${f}.so.3 && echo "linked ${f}.so.3 -> $src"; \
+      else \
+        echo "skipped ${f} (no other version found, or .so.3 already present)"; \
+      fi; \
+    done && ldconfig
+
+# libcuda and libnvidia-* are injected by the NVIDIA Container Toolkit at run time
+RUN so=$(find /app/_build -name 'libexla.so' | head -1); \
+    if [ -z "$so" ]; then echo "libexla.so not found under /app/_build"; exit 1; fi; \
+    missing=$(ldd "$so" | grep 'not found' | grep -v -E 'libcuda\.so|libnvidia' || true); \
+    if [ -n "$missing" ]; then echo "Unresolved libraries for $so:"; echo "$missing"; exit 1; fi; \
+    echo "EXLA NIF libraries resolve: $so"
+
+COPY elixir/ /app/
+COPY --chmod=755 bench/ /app/bench/
+RUN mix compile
+
+CMD ["bash"]

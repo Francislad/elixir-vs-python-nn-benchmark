@@ -1,0 +1,17 @@
+# Elixir build output and dependencies
+elixir/_build/
+elixir/deps/
+elixir/cover/
+elixir/doc/
+elixir/erl_crash.dump
+
+# Downloaded datasets
+datasets/
+
+# Benchmark results
+results/
+
+# Python
+__pycache__/
+*.pyc
+.venv/

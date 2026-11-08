@@ -1,0 +1,42 @@
+# Run one service at a time (`docker compose run --rm <service>`), never `up`
+# Pick the run with variables: BATCH (required), DATASET (mnist or cifar10, default mnist), RUNS (default 5)
+# Results are written as root; run `sudo chown -R $USER:$USER results datasets` afterwards
+
+x-bench-common: &bench-common
+  # No swap; an OOM kill is still visible
+  mem_limit: 6g
+  memswap_limit: 6g
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  elixir-bench:
+    <<: *bench-common
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.elixir
+    image: nn-bench-elixir
+    environment:
+      TMPDIR: /data/scidata
+    volumes:
+      - ./datasets/scidata:/data/scidata
+      - ./results/docker:/app/results
+    command: ["bench/run_benchmark_elixir.sh", "scripts/train_${DATASET:-mnist}.exs", "${RUNS:-5}", "0.1", "/app/results/${BATCH:?set BATCH, for example BATCH=batch4}/elixir", "/app"]
+
+  python-bench:
+    <<: *bench-common
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.python
+    image: nn-bench-python
+    environment:
+      KERAS_HOME: /data/keras
+    volumes:
+      - ./datasets/keras:/data/keras
+      - ./results/docker:/app/results
+    command: ["bench/run_benchmark_python.sh", "train_${DATASET:-mnist}.py", "${RUNS:-5}", "0.1", "/app/results/${BATCH:?set BATCH, for example BATCH=batch4}/python"]
